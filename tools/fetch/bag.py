@@ -53,10 +53,9 @@ def _look(body: Any) -> None:
 
 
 def bag_spec() -> Any:
+    """The bag's spec: the body box, the mug's strap and the drawn-only details."""
     spec = O._prop_spec()
-    # Named "mug" in the scene so the pilot, the sensing and the probes find it as
-    # they find the mug; the geoms carry the bag's own names.
-    body = O._free_body(spec, "mug")
+    body = O._free_body(spec, "bag")
     O._prop_geom(body, name="bag_body", type=mujoco.mjtGeom.mjGEOM_BOX, size=list(HALF),
                  pos=[0.0, 0.0, 0.0], rgba=KRAFT, mass=MASS - 0.024)
     boxes = handle_boxes()
@@ -78,7 +77,7 @@ def apply_bag(env_cfg: Any) -> None:
 
     from mjlab.entity import EntityCfg
 
-    props = {"mug": EntityCfg(spec_fn=bag_spec, init_state=EntityCfg.InitialStateCfg(
+    props = {"bag": EntityCfg(spec_fn=bag_spec, init_state=EntityCfg.InitialStateCfg(
         pos=(MUG_X, MUG_Y, BODY_HALF_H), rot=(cos(BAG_YAW / 2), 0.0, 0.0, sin(BAG_YAW / 2))))}
     env_cfg.scene.entities.update(props)
     O._place_props(env_cfg, props)

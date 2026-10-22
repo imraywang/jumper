@@ -70,7 +70,7 @@ def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-def make_pilot(env, player, prop: str = PROP, log=print):
+def make_pilot(env, player, prop: str = PROP, log=print, start: str = "settle"):
     from controller import GamepadState
     from tasks.jumper.five_foot.claw import aperture_mm
     from tasks.jumper.five_foot.mdp.grasp import _closing_in_palm, _mouth_in_palm
@@ -83,8 +83,11 @@ def make_pilot(env, player, prop: str = PROP, log=print):
     mouth_in_palm = _mouth_in_palm(env.sim.mj_model)
     closing_in_palm = _closing_in_palm(env.sim.mj_model)
     target_prop = env.scene[prop]
-    if prop == "mug":
-        from mug import FEATURE
+    if prop in ("mug", "bag"):
+        if prop == "mug":
+            from mug import FEATURE
+        else:
+            from bag import FEATURE
         offset, half_x, half_y, hold = np.array(FEATURE["offset"]), FEATURE["half_x"], FEATURE["half_y"], FEATURE["hold"]
         gap = FEATURE.get("gap", GAP)
     else:
@@ -112,7 +115,7 @@ def make_pilot(env, player, prop: str = PROP, log=print):
         log(f"[fetch] {_name} jaw: ahead of the anvil {np.dot(_rel, _fwd).max():+.3f} m, "
             f"across the mouth {np.dot(_rel, _across).min():+.3f}..{np.dot(_rel, _across).max():+.3f} m")
 
-    st = {"name": "settle", "since": 0.0, "attempts": 0, "turn": 0, "turn_t0": 0.0, "turn_e0": 0.0,
+    st = {"name": start, "since": 0.0, "attempts": 0, "turn": 0, "turn_t0": 0.0, "turn_e0": 0.0,
           "target": None, "twist": 0.0, "twist_i": 0.0, "after_fine": "creep2",
           "stall_p": None, "stall_t": 0.0, "bump": 0.0, "recreeps": 0}
 
@@ -439,4 +442,5 @@ def make_pilot(env, player, prop: str = PROP, log=print):
                 f"ly={s['ly']:+.2f} lx={s['lx']:+.2f} rx={s['rx']:+.2f} ry={s['ry']:+.2f}")
         return GamepadState(**s)
 
+    pilot.state = st    # read by a caller that takes over after a phase (tools/fetch/cleanup.py)
     return pilot

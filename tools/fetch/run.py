@@ -94,7 +94,9 @@ def main() -> None:
     parser.add_argument("--pilot", required=True, help="python file defining make_pilot(env, player)")
     parser.add_argument("--mug", action="store_true", help="add the mug prop (tools/fetch/mug.py)")
     parser.add_argument("--bag", action="store_true",
-                        help="add a takeout bag in the mug's place, scene name 'mug' (tools/fetch/bag.py)")
+                        help="add a takeout bag in the mug's place (tools/fetch/bag.py; FETCH_PROP=bag)")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="the bag, the mug and a bin, for --pilot tools/fetch/cleanup.py")
     parser.add_argument("--scenery", action="store_true", help="dunes, palms and rocks around the beach (tools/fetch/scenery.py)")
     parser.add_argument("--room", action="store_true", help="beat two's pillars and tray, props that collide (tools/fetch/room.py)")
     parser.add_argument("--steps", type=int, default=None)
@@ -147,6 +149,10 @@ def main() -> None:
         from bag import apply_bag
 
         apply_bag(env_cfg)
+    elif args.cleanup:
+        from cleanup import apply_cleanup
+
+        apply_cleanup(env_cfg)
     if args.scenery:
         from scenery import apply_scenery
 
