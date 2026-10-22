@@ -262,4 +262,5 @@ def make_pilot(env, player, log=print):
                 f"yaw={math.degrees(yaw):+5.1f} {where}")
         return GamepadState(**s)
 
+    pilot.state = st    # read by a caller that runs the cleanup as one skill (tools/fetch/voice_pilot.py)
     return pilot
