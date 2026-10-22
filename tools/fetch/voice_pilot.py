@@ -11,7 +11,13 @@ Something else -- a voice front end, a script, `nc` -- connects to 127.0.0.1:$CR
     {"skill": "go_to", "x": 0.5, "y": -0.3}                         world metres: turn, then walk
     {"skill": "gesture", "name": "hello"}                           see GESTURES
     {"skill": "dance", "name": "crab"}                              see DANCES
+    {"skill": "face", "degrees": 180}                               turn to a world heading
     {"skill": "tidy_up"}                                            cleanup.py's two items into the bin
+    {"skill": "fetch_slippers"}                                     cleanup.py's slippers job: to the bedside
+    {"skill": "follow", "seconds": 30, "distance": 0.6}             keep near the person (story.py)
+    {"skill": "person", "pose": "standing"} / {"skill": "person", "walk_to": [x, y]}
+                                                                    a stage direction for the person:
+                                                                    done at once, beside whatever is queued
     {"skill": "stop"}                                               drop the queue and stand
     {"skill": "status"}                                             answered at once, nothing queued
 
@@ -48,6 +54,13 @@ DANCES = {
     "maze": {"buttons": {"menu"}, "hat_x": -1}, "dream_wings": {"buttons": {"menu"}, "hat_x": 1},
 }
 DIRECTIONS = {"forward": (1.0, 0.0), "back": (-1.0, 0.0), "left": (0.0, 1.0), "right": (0.0, -1.0)}
+SKILLS = ("walk", "turn", "face", "go_to", "gesture", "dance", "tidy_up", "fetch_slippers", "follow",
+          "person", "stop")
+JOB_OF = {"tidy_up": "tidy", "fetch_slippers": "slippers"}
+FOLLOW_GAP = 0.6                 # m from the person the crab stands at
+FOLLOW_SLACK = 0.25              # it sets off again once the person is this much further
+FOLLOW_CLOSE = 0.40              # and backs away, facing them, once they come this close (story_v2: the
+                                 # person walked onto the crab, which only ever closed the gap)
 
 WALK = 0.5                       # stick travel: above the policy's ~0.4 dead band
 PRESS_S = 0.3                    # how long a mode switch is held
@@ -81,7 +94,7 @@ def make_pilot(env, player, log=print):
                     if skill == "status":
                         with lock:
                             reply = dict(st["status"])
-                    elif skill in ("walk", "turn", "go_to", "gesture", "dance", "tidy_up", "stop"):
+                    elif skill in SKILLS:
                         _check(cmd)
                         inbox.put(cmd)
                         reply = {"ok": True, "queued": skill}
@@ -97,7 +110,7 @@ def make_pilot(env, player, log=print):
             float(cmd["distance"])
             if cmd.get("direction", "forward") not in DIRECTIONS:
                 raise ValueError(f"direction must be one of {sorted(DIRECTIONS)}")
-        elif skill == "turn":
+        elif skill in ("turn", "face"):
             float(cmd["degrees"])
         elif skill == "go_to":
             float(cmd["x"]), float(cmd["y"])
@@ -105,6 +118,12 @@ def make_pilot(env, player, log=print):
             raise ValueError(f"gesture must be one of {sorted(GESTURES)}")
         elif skill == "dance" and cmd.get("name") not in DANCES:
             raise ValueError(f"dance must be one of {sorted(DANCES)}")
+
+    person = None
+    if "person" in env.scene.entities:
+        from story import Person
+
+        person = Person(env)
 
     server = _Server(("127.0.0.1", PORT), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -145,6 +164,12 @@ def make_pilot(env, player, log=print):
             cmd["_axis"] = (fx, fy)
         elif cmd["skill"] == "turn":
             cmd["_want"] = _wrap(yaw + math.radians(float(cmd["degrees"])))
+        elif cmd["skill"] == "face":
+            cmd["_want"] = _wrap(math.radians(float(cmd["degrees"])))
+        elif cmd["skill"] == "follow":
+            cmd["_until"] = t + float(cmd.get("seconds", 30.0))
+            cmd["_gap"] = float(cmd.get("distance", FOLLOW_GAP))
+            cmd["_moving"] = False
         elif cmd["skill"] == "go_to":
             cmd["_goal"] = np.array([float(cmd["x"]), float(cmd["y"])])
             cmd["_stage"] = "turn"
@@ -152,10 +177,10 @@ def make_pilot(env, player, log=print):
             table = GESTURES if cmd["skill"] == "gesture" else DANCES
             cmd["_press"] = table[cmd["name"]]
             cmd["_entered"] = False
-        elif cmd["skill"] == "tidy_up":
+        elif cmd["skill"] in JOB_OF:
             from cleanup import make_pilot as cleanup_pilot
 
-            cmd["_inner"] = cleanup_pilot(env, player, log=log)
+            cmd["_inner"] = cleanup_pilot(env, player, log=log, job=JOB_OF[cmd["skill"]])
             cmd["_stage"] = "run"
         st.update(current=cmd, since=t, turn=0, stall_p=None, bump=0.0)
         log(f"\n[voice] {t:6.2f}s  start {_label(cmd)}")
@@ -174,7 +199,11 @@ def make_pilot(env, player, log=print):
         fsm = player.fsm
         while not inbox.empty():
             cmd = inbox.get_nowait()
-            if cmd["skill"] == "stop":
+            if cmd["skill"] == "person":
+                if person is not None:
+                    person.command(cmd)
+                    log(f"\n[voice] {t:6.2f}s  person {_label(cmd)}")
+            elif cmd["skill"] == "stop":
                 st["pending"].clear()
                 if st["current"] is not None:
                     finish(t, "stopped")
@@ -183,6 +212,8 @@ def make_pilot(env, player, log=print):
         if st["current"] is None and st["pending"] and fsm.mode == "locomotion":
             begin(st["pending"].pop(0), t, base_p, yaw)
         cmd, since = st["current"], t - st["since"]
+        if person is not None:
+            person.step(env.step_dt)
 
         if cmd is None:
             pass
@@ -201,7 +232,23 @@ def make_pilot(env, player, log=print):
                 else:
                     s["lx"] = -mag * fy                      # Lx positive is right
                 turn_toward(yaw, cmd["_heading"], s, start=0.12, stop=0.04)
-        elif cmd["skill"] == "turn":
+        elif cmd["skill"] == "follow":
+            if person is None or t > cmd["_until"]:
+                finish(t, "done" if person is not None else "no one to follow")
+            else:
+                err = person.xy - base_p[:2]
+                dist = float(np.linalg.norm(err))
+                bearing = math.atan2(err[1], err[0])
+                if dist > cmd["_gap"] + FOLLOW_SLACK:
+                    cmd["_moving"] = True
+                elif dist < cmd["_gap"]:
+                    cmd["_moving"] = False
+                facing = turn_toward(yaw, bearing, s, start=0.25 if cmd["_moving"] else 0.35, stop=0.08)
+                if cmd["_moving"] and (facing or abs(_wrap(bearing - yaw)) < 0.5):
+                    s["ly"] = -stick(base_p, t)
+                elif dist < FOLLOW_CLOSE and abs(_wrap(bearing - yaw)) < 0.8:
+                    s["ly"] = stick(base_p, t)                # Ly positive is back
+        elif cmd["skill"] in ("turn", "face"):
             if turn_toward(yaw, cmd["_want"], s) and since > 0.3 or since > MOVE_TIMEOUT_S:
                 finish(t)
         elif cmd["skill"] == "go_to":
@@ -224,11 +271,11 @@ def make_pilot(env, player, log=print):
                 cmd["_entered"] = True
             elif cmd["_entered"] or since > MODE_TIMEOUT_S:
                 finish(t, "done" if cmd["_entered"] else "never entered")
-        elif cmd["skill"] == "tidy_up":
+        elif cmd["skill"] in JOB_OF:
             if cmd["_stage"] == "run":
                 if cmd["_inner"].state["phase"] != "done":
                     pad = cmd["_inner"](t)
-                    _remember(st, lock, base_p, yaw, fsm, cmd)
+                    _remember(st, lock, base_p, yaw, fsm, cmd, t, person)
                     return pad
                 cmd["_stage"], cmd["_left_at"] = "leave", t
             if t - cmd["_left_at"] < PRESS_S:
@@ -236,22 +283,25 @@ def make_pilot(env, player, log=print):
             elif fsm.mode == "locomotion":
                 finish(t)
 
-        _remember(st, lock, base_p, yaw, fsm, st["current"])
+        _remember(st, lock, base_p, yaw, fsm, st["current"], t, person)
         return GamepadState(**s)
 
     return pilot
 
 
-def _remember(st, lock, base_p, yaw, fsm, cmd) -> None:
+def _remember(st, lock, base_p, yaw, fsm, cmd, t, person) -> None:
     with lock:
         st["status"] = {
-            "ok": True, "mode": fsm.mode,
+            "ok": True, "t": round(t, 2), "mode": fsm.mode,
             "x": round(float(base_p[0]), 3), "y": round(float(base_p[1]), 3),
             "heading_deg": round(math.degrees(yaw), 1),
             "doing": _label(cmd) if cmd else None,
             "queued": [_label(c) for c in st["pending"]],
             "recent": st["done"][-5:],
         }
+        if person is not None:
+            st["status"]["person"] = {"pose": person.pose, "x": round(float(person.pos[0]), 3),
+                                      "y": round(float(person.pos[1]), 3), "walking": person.walking}
 
 
 def _label(cmd) -> str:

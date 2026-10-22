@@ -83,11 +83,13 @@ def make_pilot(env, player, prop: str = PROP, log=print, start: str = "settle"):
     mouth_in_palm = _mouth_in_palm(env.sim.mj_model)
     closing_in_palm = _closing_in_palm(env.sim.mj_model)
     target_prop = env.scene[prop]
-    if prop in ("mug", "bag"):
+    if prop in ("mug", "bag", "slippers"):
         if prop == "mug":
             from mug import FEATURE
-        else:
+        elif prop == "bag":
             from bag import FEATURE
+        else:
+            from slippers import FEATURE
         offset, half_x, half_y, hold = np.array(FEATURE["offset"]), FEATURE["half_x"], FEATURE["half_y"], FEATURE["hold"]
         gap = FEATURE.get("gap", GAP)
     else:

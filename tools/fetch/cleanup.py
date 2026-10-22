@@ -1,4 +1,7 @@
-"""Tidy up: fetch two pieces of litter one after the other and drop each in a bin.
+"""Tidy up: fetch items one after the other and set each down where it belongs.
+
+`job="tidy"` (the default) is the bag and the mug into the bin; `job="slippers"` is the
+pair of slippers to the bedside, set down facing the bed.
 
     FETCH_LIFT=1 .venv/bin/python tools/fetch/run.py --pilot tools/fetch/cleanup.py \\
         --task jumper.five_foot --cleanup --scene beach --headless --steps 24000 --video ...
@@ -40,11 +43,14 @@ from mug import BODY_HALF_H as M_HALF_H
 #: missed approaches pushed it beside the mug and the claw came up with the mug
 #: (cleanup_v2).
 ITEMS: tuple[tuple[str, tuple[float, float]], ...] = (("bag", (0.587, 0.064)), ("mug", (0.587, -0.75)))
+#: The slippers, where the alarm film (tools/fetch/story.py) leaves them: off the rug's
+#: corner, clear of both pickup lines and of the map's plate and basket.
+SLIPPERS_XY = (-0.25, -0.95)
 
 #: An item counts as lifted when its centre is this far above where it stood.
 LIFTED_DZ = 0.03
 RETRIES = 2                      # fresh approaches for an item the claw did not come up with
-MAX_BACK = 1.0                   # m: the furthest the base walks back looking for the bin's line
+MAX_BACK = 1.5                   # m: the furthest the base walks along its axis looking for the goal's line
 
 #: The bin: beside the pickup line, its near wall far enough ahead of a base that
 #: holds an item over it that the front legs stay clear.
@@ -54,6 +60,20 @@ BIN_HALF = (0.09, 0.17)          # 18 x 34 cm inside
 #: far end, so the second neither lands on it nor is carried over it. Both aimed at the
 #: centre, the mug came down on the bag, and opening the claw threw the bag out (home_v1).
 SLOT_Y = {"bag": +0.08, "mug": -0.09}
+
+#: Floor beside home.map's bed (its side at x = -0.94), where the slippers are set down
+#: toes out, for feet coming off the bed's middle.
+SLIPPERS_GOAL = (-0.80, 0.30)
+
+#: What a pilot does: the items in the order they are picked, where each one goes, the
+#: heading the drop is made at (pi: facing the bed, the robot's back to the room), and
+#: whether it dances when it is done.
+JOBS: dict[str, dict] = {
+    "tidy": {"items": ("bag", "mug"), "yaw": 0.0, "celebrate": True,
+             "goals": {n: (BIN_XY[0], BIN_XY[1] + SLOT_Y[n]) for n in ("bag", "mug")}},
+    "slippers": {"items": ("slippers",), "yaw": math.pi, "celebrate": False,
+                 "goals": {"slippers": SLIPPERS_GOAL}},
+}
 BIN_WALL_H = 0.045               # under a lifted item at CARRY_NOSE, which the strafe carries over the side wall
                                  # (0.06 at LIFT_TO stopped the mug against it, cleanup_v1)
 CARRY_NOSE = 0.8                 # the nose for the carry to the bin, raised from fetch's LIFT_TO over RAISE_S
@@ -118,13 +138,19 @@ def in_bin(p: np.ndarray) -> bool:
             and p[2] < BIN_WALL_H + 0.02)
 
 
-def make_pilot(env, player, log=print):
+def placed(p: np.ndarray, goal: tuple[float, float]) -> bool:
+    return math.hypot(p[0] - goal[0], p[1] - goal[1]) < 0.08 and p[2] < M_HALF_H + 0.02
+
+
+def make_pilot(env, player, log=print, job: str = "tidy"):
     from controller import GamepadState
 
     if not LIFT:
         raise SystemExit("cleanup needs the lifted carry: run with FETCH_LIFT=1")
     robot = env.scene["robot"]
-    names = [name for name, _ in ITEMS]
+    plan = JOBS[job]
+    names = list(plan["items"])
+    want_yaw = plan["yaw"]
     st = {"phase": "fetch", "since": 0.0, "item": 0, "turn": 0, "stall_p": None, "stall_t": 0.0, "bump": 0.0,
           "lifted": 0.0, "tries": 0, "retries": 0, "back_from": 0.0}
     inner = [fetch_pilot(env, player, prop=names[0], log=log)]
@@ -147,8 +173,8 @@ def make_pilot(env, player, log=print):
         return WALK + st["bump"]
 
     def heading(yaw, s):
-        """fetch.py's turn pulses, toward yaw 0."""
-        e = _wrap(-yaw)
+        """fetch.py's turn pulses, toward the job's drop heading."""
+        e = _wrap(want_yaw - yaw)
         if st["turn"] == 0 and abs(e) > 0.10:
             st["turn"] = 1 if e > 0 else -1
         elif st["turn"] != 0 and (abs(e) < 0.03 or (e > 0) != (st["turn"] > 0)):
@@ -172,8 +198,8 @@ def make_pilot(env, player, log=print):
                     return inner[0](t)
                 goto("stow", t)
             else:
-                st["lifted"], st["tries"], st["back_from"] = t, 0, robot.data.root_link_pos_w[0, 0].item()
-                goto("back", t)
+                st["lifted"], st["tries"] = t, 0
+                goto("face", t)
         nose = LIFT_TO + (CARRY_NOSE - LIFT_TO) * min(1.0, (t - st["lifted"]) / RAISE_S)
         s = dict(lx=0.0, ly=0.0, rx=0.0, ry=nose, lt=1.0, rt=0.0, hat_x=-1, hat_y=0, buttons=frozenset())
         base_p = robot.data.root_link_pos_w[0].cpu().numpy()
@@ -182,12 +208,19 @@ def make_pilot(env, player, log=print):
         phase, since = st["phase"], t - st["since"]
         name = names[st["item"]]
         item = item_pos(name)
-        goal = np.array([BIN_XY[0], BIN_XY[1] + SLOT_Y.get(name, 0.0)])
-        err = goal - item[:2]                              # where the item has to go, in the body frame
+        goal = plan["goals"][name]
+        err = np.array(goal) - item[:2]                    # where the item has to go, in the body frame
         ex, ey = c * err[0] + sn * err[1], -sn * err[0] + c * err[1]
 
-        if phase == "back":
-            if st["back_from"] - base_p[0] > MAX_BACK:
+        if phase == "face":
+            # The pickup is always made facing +x (fetch.py's approach); a drop made
+            # facing elsewhere turns first, with the item up.
+            heading(yaw, s)
+            if since > 0.5 and st["turn"] == 0 and abs(_wrap(want_yaw - yaw)) < 0.12:
+                st["back_from"] = base_p[:2].copy()
+                goto("back", t)
+        elif phase == "back":
+            if float(np.linalg.norm(base_p[:2] - st["back_from"])) > MAX_BACK:
                 log(f"\n[cleanup] walked back {MAX_BACK} m without lining {name} up with the bin; dropping it here")
                 goto("open", t)
             elif ex < -ON_TARGET:
@@ -207,7 +240,7 @@ def make_pilot(env, player, log=print):
             heading(yaw, s)
             if since > 1.0 and st["turn"] == 0:
                 log(f"\n[cleanup] over the bin: {name} at ({item[0]:+.3f},{item[1]:+.3f},{item[2]:.3f}), "
-                    f"{ex * 100:+.1f} / {ey * 100:+.1f} cm off its place in the bin")
+                    f"{ex * 100:+.1f} / {ey * 100:+.1f} cm off its place")
                 if (abs(ex) > ON_TARGET or abs(ey) > ON_TARGET) and st["tries"] < 2:
                     st["tries"] += 1                       # swung off while settling: line up again
                     goto("back", t)
@@ -227,7 +260,7 @@ def make_pilot(env, player, log=print):
             s["ry"], s["lt"] = SET_NOSE, 0.0
             s["rx"] = SLIP_TWIST * min(1.0, since / 0.5)
             if since > SLIP_S:
-                log(f"\n[cleanup] let go of {name}: {'IN THE BIN' if in_bin(item) else 'MISSED the bin'} "
+                log(f"\n[cleanup] let go of {name}: {'IN PLACE' if placed(item, goal) else 'MISSED its place'} "
                     f"at ({item[0]:+.3f},{item[1]:+.3f},{item[2]:.3f})")
                 goto("retreat", t)
         elif phase == "retreat":
@@ -243,7 +276,7 @@ def make_pilot(env, player, log=print):
                     inner[0] = fetch_pilot(env, player, prop=names[st["item"]], log=log, start="approach")
                     goto("fetch", t)
                 else:
-                    goto("celebrate", t)
+                    goto("celebrate" if plan["celebrate"] else "done", t)
         elif phase == "celebrate":
             s["lt"], s["hat_x"], s["ry"] = 0.0, 0, 0.0
             if since < 5.0:
@@ -256,7 +289,7 @@ def make_pilot(env, player, log=print):
 
         if t - last_log[0] >= 0.5:
             last_log[0] = t
-            where = " ".join(f"{n}=({p[0]:+.3f},{p[1]:+.3f},{p[2]:.3f}{',bin' if in_bin(p) else ''})"
+            where = " ".join(f"{n}=({p[0]:+.3f},{p[1]:+.3f},{p[2]:.3f}{',placed' if placed(p, plan['goals'][n]) else ''})"
                              for n, p in ((n, item_pos(n)) for n in names))
             log(f"\n[cleanup] t={t:6.2f} {phase:<9} base=({base_p[0]:+.3f},{base_p[1]:+.3f}) "
                 f"yaw={math.degrees(yaw):+5.1f} {where}")

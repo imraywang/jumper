@@ -60,8 +60,9 @@ class _SwingCam:
 
     CHASE_S = 1.5
 
-    def __init__(self, video, env, amplitude: float, period: float):
+    def __init__(self, video, env, amplitude: float, period: float, chase: bool = True):
         self._video, self._env = video, env
+        self._chase = chase
         self._amp, self._period = amplitude, period
         self._t, self._dt = 0.0, float(env.step_dt)
         self._base = None
@@ -80,8 +81,9 @@ class _SwingCam:
         yaw = self._yaw_deg()
         if self._base is None:
             self._base, self._heading = cam.azimuth - yaw, yaw
-        err = (yaw - self._heading + 180.0) % 360.0 - 180.0
-        self._heading += err * min(1.0, self._dt / self.CHASE_S)
+        if self._chase:
+            err = (yaw - self._heading + 180.0) % 360.0 - 180.0
+            self._heading += err * min(1.0, self._dt / self.CHASE_S)
         self._t += self._dt
         cam.azimuth = self._base + self._heading + self._amp * math.sin(2.0 * math.pi * self._t / self._period)
         self._video.update()
@@ -138,6 +140,8 @@ def main() -> None:
                         help="add a takeout bag in the mug's place (tools/fetch/bag.py; FETCH_PROP=bag)")
     parser.add_argument("--cleanup", action="store_true",
                         help="the bag, the mug and a bin, for --pilot tools/fetch/cleanup.py")
+    parser.add_argument("--story", action="store_true",
+                        help="the alarm film's room: --cleanup's props, the slippers and a person (tools/fetch/story.py)")
     parser.add_argument("--scenery", action="store_true", help="dunes, palms and rocks around the beach (tools/fetch/scenery.py)")
     parser.add_argument("--room", action="store_true", help="beat two's pillars and tray, props that collide (tools/fetch/room.py)")
     parser.add_argument("--steps", type=int, default=None)
@@ -153,6 +157,10 @@ def main() -> None:
                         help="turn the --video camera with the robot's heading and sway it by DEG "
                              "either side (0 follows the heading without the sway)")
     parser.add_argument("--video-swing-period", type=float, default=14.0, metavar="S")
+    parser.add_argument("--video-chase", action=argparse.BooleanOptionalAction, default=True,
+                        help="with --video-swing, turn the camera with the robot's heading; --no-video-chase "
+                             "keeps it on the side of the world it started on (a robot that turns to face a "
+                             "wall then leaves the camera in the room, not behind the furniture)")
     parser.add_argument("--cam", action="append", default=[], metavar="NAME:AZ:EL:DIST",
                         help="an extra camera on the same take, written beside --video as <stem>-NAME.mp4; "
                              "repeatable (e.g. --cam low:150:-8:0.8 --cam claw:60:-20:0.55)")
@@ -198,6 +206,10 @@ def main() -> None:
         from cleanup import apply_cleanup
 
         apply_cleanup(env_cfg)
+    elif args.story:
+        from story import apply_story
+
+        apply_story(env_cfg)
     if args.scenery:
         from scenery import apply_scenery
 
@@ -230,7 +242,7 @@ def main() -> None:
                                     elevation=args.video_elevation)
                 video.__enter__()
                 if args.video_swing is not None:
-                    swing = _SwingCam(video, env, args.video_swing, args.video_swing_period)
+                    swing = _SwingCam(video, env, args.video_swing, args.video_swing_period, args.video_chase)
                 for spec_ in args.cam:
                     name, az, el, dist = spec_.split(":")
                     extra = ReplayVideo(env, args.video.with_name(f"{args.video.stem}-{name}{args.video.suffix}"),
