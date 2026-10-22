@@ -78,9 +78,12 @@ def _runs(flags):
     return out
 
 
-def add_person(take_frames, bodies: list[str], clips: Path, collection) -> list[str]:
+def add_person(take_frames, bodies: list[str], clips: Path, collection, mattress_top=None) -> list[str]:
     """Add Remy; returns the body names whose drawn geoms it replaces."""
     xpos, xquat = take_frames["xpos"], take_frames["xquat"]
+    lie_at = LIE_AT.copy()
+    if mattress_top is not None:                     # a bed furnish.py built: hips this far above its top
+        lie_at.z = mattress_top + (LIE_AT.z - 0.46)
     body = next(i for i, name in enumerate(bodies) if name.split("/")[0] == "person")
     n = len(xpos)
     state, pos, yaw, speed = _states(xpos, xquat, body)
@@ -159,7 +162,7 @@ def add_person(take_frames, bodies: list[str], clips: Path, collection) -> list[
     stand_xy = pos[f_stand] if f_stand < n else pos[-1]
     for i in range(n):
         if i < f_up:
-            loc[i] = tuple(LIE_AT - LIE_HIPS)
+            loc[i] = tuple(lie_at - LIE_HIPS)
             rot[i] = (tilt, 0.0, 0.0)
         elif i < f_rise_end:
             # Seated on the edge facing into the room, feet where the take stands up.

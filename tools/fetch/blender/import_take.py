@@ -50,6 +50,8 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--hdri", default="cayley_interior")
+    ap.add_argument("--furnish", action="store_true",
+                    help="replace the map's bed, dress the sofa and add decor (furnish.py)")
     ap.add_argument("--mixamo", type=Path, default=None,
                     help="Mixamo clips (person.py): play Remy where the take's stand-in person was")
     return ap.parse_args(argv)
@@ -142,6 +144,12 @@ class Looks:
         self.robot_dark = _principled("crab_dark", (0.03, 0.03, 0.035), rough=0.35, coat=0.3)
         self.robot_grey = _principled("crab_joint", (0.55, 0.56, 0.58), rough=0.4, metal=0.3)
         self.skin = _principled("skin", (0.80, 0.58, 0.47), rough=0.5, sss=0.15)
+
+    def textured(self, name, folder: Path, scale: float, tint=None, colour_map=True):
+        """A Poly Haven textured material; `tint` is a display (sRGB) colour, multiplied into
+        the texture's colour, or the whole colour with `colour_map=False` (the weave's
+        relief kept, its print dropped: rough_linen is blue-grey, wool_boucle is a plaid)."""
+        return _textured(name, folder, scale=scale, tint=_lin(tint) if tint else None, colour_map=colour_map)
 
     def fabric(self, rgba):
         """Upholstery in the mesh's own colour, with the woven pattern's normal map."""
@@ -455,11 +463,16 @@ def main():
         bpy.data.objects.remove(ob, do_unlink=True)
     looks = Looks(args.assets)
     frames, n, info, coll = build(args.take, looks, skip_bodies=("person",) if args.mixamo else ())
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    mattress_top = None
+    if args.furnish:
+        from furnish import furnish
+
+        mattress_top = furnish(coll, looks, args.assets)
     if args.mixamo:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
         from person import add_person
 
-        add_person(frames, info["bodies"], args.mixamo.resolve(), coll)
+        add_person(frames, info["bodies"], args.mixamo.resolve(), coll, mattress_top=mattress_top)
     camera(frames, n)
     lights(args.assets, args.hdri)
     setup_render(args, n)
