@@ -19,7 +19,9 @@ from tasks.jumper.five_foot import objects as O
 
 MASS = 0.08                       # kg: a pair of light slides, about the mug's 75 g
 SOLE_HALF = (0.11, 0.045, 0.007)  # 22 x 9 cm, 14 mm thick
-SOLE_X = 0.06                     # the soles' centre along x: the toes 5 cm ahead of the hook's inner end
+SOLE_X = 0.11                     # the soles' centre along x: the toes 2.6 cm behind the hook's inner end.
+                                  # At 0.06 the toes stood 1.4 cm ahead of the hook, the jaw met them on
+                                  # every creep, and missed approaches pushed the pair 1.5 m (story_take)
 SOLE_Y = 0.062                    # either side of the hook
 STRAP_X = 0.0                     # the strap across each sole's front half
 STRAP_H = 0.035

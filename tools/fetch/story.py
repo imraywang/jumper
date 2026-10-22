@@ -42,7 +42,7 @@ LIE_MAT = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
 #: Standing up beside the bed, facing into the room, in the slippers.
 STAND_POS = (-0.70, 0.28, 0.0)    # feet in the slippers, as cleanup.SLIPPERS_GOAL leaves them
 GET_UP_S = 2.0                    # lying to standing, interpolated
-WALK_SPEED = 0.45                 # m/s
+WALK_SPEED = 0.8                  # m/s: a slow indoor walk, what the Mixamo walk cycle plays at 0.8 of its rate
 
 
 def person_spec() -> Any:

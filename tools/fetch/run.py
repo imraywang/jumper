@@ -153,6 +153,9 @@ def main() -> None:
     parser.add_argument("--video-distance", type=float, default=None)
     parser.add_argument("--video-azimuth", type=float, default=None)
     parser.add_argument("--video-elevation", type=float, default=None)
+    parser.add_argument("--export-poses", type=Path, default=None, metavar="DIR",
+                        help="also write every drawn geom and every body's pose per frame, at --video-fps, "
+                             "for an offline renderer (tools/fetch/export_poses.py, tools/fetch/blender/)")
     parser.add_argument("--video-swing", type=float, default=None, metavar="DEG",
                         help="turn the --video camera with the robot's heading and sway it by DEG "
                              "either side (0 follows the heading without the sway)")
@@ -251,6 +254,11 @@ def main() -> None:
                                         elevation=float(el))
                     extra.__enter__()
                     extras.append(extra)
+            if args.export_poses is not None:
+                from export_poses import PoseExport
+
+                camera_of = (lambda: video._renderer._cam) if video is not None else None
+                extras.append(PoseExport(env, args.export_poses, args.video_fps, camera_of))
             speed = args.speed if args.speed is not None else (0.0 if viewer is None else 1.0)
             try:
                 first = swing if args.video is not None and args.video_swing is not None else video
