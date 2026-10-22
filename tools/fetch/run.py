@@ -93,6 +93,8 @@ def main() -> None:
     parser.add_argument("--app", type=Path, default=REPO / "out/bundle_example/jumper.app")
     parser.add_argument("--pilot", required=True, help="python file defining make_pilot(env, player)")
     parser.add_argument("--mug", action="store_true", help="add the mug prop (tools/fetch/mug.py)")
+    parser.add_argument("--bag", action="store_true",
+                        help="add a takeout bag in the mug's place, scene name 'mug' (tools/fetch/bag.py)")
     parser.add_argument("--scenery", action="store_true", help="dunes, palms and rocks around the beach (tools/fetch/scenery.py)")
     parser.add_argument("--room", action="store_true", help="beat two's pillars and tray, props that collide (tools/fetch/room.py)")
     parser.add_argument("--steps", type=int, default=None)
@@ -141,6 +143,10 @@ def main() -> None:
         from mug import apply_mug
 
         apply_mug(env_cfg)
+    elif args.bag:
+        from bag import apply_bag
+
+        apply_bag(env_cfg)
     if args.scenery:
         from scenery import apply_scenery
 
