@@ -46,6 +46,47 @@ class _AllVideos:
             v.update()
 
 
+class _SwingCam:
+    """Turn a recorder's camera with the robot, and sway it, once per control step.
+
+    The recorder places its camera from the robot's first heading and then only
+    translates it with the body. This swings it as well: the azimuth trails the
+    robot's heading (a first-order lag of `CHASE_S`), so a turn is followed rather
+    than leaving the camera looking at the robot's side, and a slow sine of
+    `amplitude` degrees over `period` seconds sways it left and right. The lag is
+    on the heading the camera follows, not on the sway, so the sway stays smooth
+    through the robot's turn pulses.
+    """
+
+    CHASE_S = 1.5
+
+    def __init__(self, video, env, amplitude: float, period: float):
+        self._video, self._env = video, env
+        self._amp, self._period = amplitude, period
+        self._t, self._dt = 0.0, float(env.step_dt)
+        self._base = None
+        self._heading = None
+
+    def _yaw_deg(self) -> float:
+        import math
+
+        w, x, y, z = (float(v) for v in self._env.scene["robot"].data.root_link_quat_w[0].cpu().numpy())
+        return math.degrees(math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
+
+    def update(self) -> None:
+        import math
+
+        cam = self._video._renderer._cam
+        yaw = self._yaw_deg()
+        if self._base is None:
+            self._base, self._heading = cam.azimuth - yaw, yaw
+        err = (yaw - self._heading + 180.0) % 360.0 - 180.0
+        self._heading += err * min(1.0, self._dt / self.CHASE_S)
+        self._t += self._dt
+        cam.azimuth = self._base + self._heading + self._amp * math.sin(2.0 * math.pi * self._t / self._period)
+        self._video.update()
+
+
 class VirtualPad:
     """The gamepad's interface, driven by a pilot callable."""
 
@@ -108,6 +149,10 @@ def main() -> None:
     parser.add_argument("--video-distance", type=float, default=None)
     parser.add_argument("--video-azimuth", type=float, default=None)
     parser.add_argument("--video-elevation", type=float, default=None)
+    parser.add_argument("--video-swing", type=float, default=None, metavar="DEG",
+                        help="turn the --video camera with the robot's heading and sway it by DEG "
+                             "either side (0 follows the heading without the sway)")
+    parser.add_argument("--video-swing-period", type=float, default=14.0, metavar="S")
     parser.add_argument("--cam", action="append", default=[], metavar="NAME:AZ:EL:DIST",
                         help="an extra camera on the same take, written beside --video as <stem>-NAME.mp4; "
                              "repeatable (e.g. --cam low:150:-8:0.8 --cam claw:60:-20:0.55)")
@@ -184,6 +229,8 @@ def main() -> None:
                                     camera_distance=args.video_distance, azimuth=args.video_azimuth,
                                     elevation=args.video_elevation)
                 video.__enter__()
+                if args.video_swing is not None:
+                    swing = _SwingCam(video, env, args.video_swing, args.video_swing_period)
                 for spec_ in args.cam:
                     name, az, el, dist = spec_.split(":")
                     extra = ReplayVideo(env, args.video.with_name(f"{args.video.stem}-{name}{args.video.suffix}"),
@@ -194,7 +241,8 @@ def main() -> None:
                     extras.append(extra)
             speed = args.speed if args.speed is not None else (0.0 if viewer is None else 1.0)
             try:
-                _loop(wrapped, player, viewer, args.steps, speed, _speed_text, None, _AllVideos(video, extras), None)
+                first = swing if args.video is not None and args.video_swing is not None else video
+                _loop(wrapped, player, viewer, args.steps, speed, _speed_text, None, _AllVideos(first, extras), None)
             except Exception as e:                       # a pilot's SegmentDone (by name: the pilot is loaded by path)
                 if type(e).__name__ != "SegmentDone":
                     raise

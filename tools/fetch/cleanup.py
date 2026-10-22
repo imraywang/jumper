@@ -49,7 +49,11 @@ MAX_BACK = 1.0                   # m: the furthest the base walks back looking f
 #: The bin: beside the pickup line, its near wall far enough ahead of a base that
 #: holds an item over it that the front legs stay clear.
 BIN_XY = (0.155, 0.606)
-BIN_HALF = (0.09, 0.15)          # 18 x 30 cm inside
+BIN_HALF = (0.09, 0.17)          # 18 x 34 cm inside
+#: Where in the bin each item goes, across it from the centre: the first one in at the
+#: far end, so the second neither lands on it nor is carried over it. Both aimed at the
+#: centre, the mug came down on the bag, and opening the claw threw the bag out (home_v1).
+SLOT_Y = {"bag": +0.08, "mug": -0.09}
 BIN_WALL_H = 0.045               # under a lifted item at CARRY_NOSE, which the strafe carries over the side wall
                                  # (0.06 at LIFT_TO stopped the mug against it, cleanup_v1)
 CARRY_NOSE = 0.8                 # the nose for the carry to the bin, raised from fetch's LIFT_TO over RAISE_S
@@ -178,7 +182,8 @@ def make_pilot(env, player, log=print):
         phase, since = st["phase"], t - st["since"]
         name = names[st["item"]]
         item = item_pos(name)
-        err = np.array(BIN_XY) - item[:2]                  # where the item has to go, in the body frame
+        goal = np.array([BIN_XY[0], BIN_XY[1] + SLOT_Y.get(name, 0.0)])
+        err = goal - item[:2]                              # where the item has to go, in the body frame
         ex, ey = c * err[0] + sn * err[1], -sn * err[0] + c * err[1]
 
         if phase == "back":
@@ -202,7 +207,7 @@ def make_pilot(env, player, log=print):
             heading(yaw, s)
             if since > 1.0 and st["turn"] == 0:
                 log(f"\n[cleanup] over the bin: {name} at ({item[0]:+.3f},{item[1]:+.3f},{item[2]:.3f}), "
-                    f"{ex * 100:+.1f} / {ey * 100:+.1f} cm off the bin centre")
+                    f"{ex * 100:+.1f} / {ey * 100:+.1f} cm off its place in the bin")
                 if (abs(ex) > ON_TARGET or abs(ey) > ON_TARGET) and st["tries"] < 2:
                     st["tries"] += 1                       # swung off while settling: line up again
                     goto("back", t)
