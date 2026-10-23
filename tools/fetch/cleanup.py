@@ -201,7 +201,7 @@ def make_pilot(env, player, log=print, job: str = "tidy"):
                 st["lifted"], st["tries"] = t, 0
                 goto("face", t)
         nose = LIFT_TO + (CARRY_NOSE - LIFT_TO) * min(1.0, (t - st["lifted"]) / RAISE_S)
-        s = dict(lx=0.0, ly=0.0, rx=0.0, ry=nose, lt=1.0, rt=0.0, hat_x=-1, hat_y=0, buttons=frozenset())
+        s = {"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": nose, "lt": 1.0, "rt": 0.0, "hat_x": -1, "hat_y": 0, "buttons": frozenset()}
         base_p = robot.data.root_link_pos_w[0].cpu().numpy()
         yaw = _yaw(robot.data.root_link_quat_w[0].cpu().numpy())
         c, sn = math.cos(yaw), math.sin(yaw)

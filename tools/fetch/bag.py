@@ -14,7 +14,6 @@ import os
 from typing import Any
 
 import mujoco
-
 from mug import (
     BAR,
     BODY_HALF_H,
@@ -26,6 +25,7 @@ from mug import (
     MUG_Y,
     handle_boxes,
 )
+
 from tasks.jumper.five_foot import objects as O
 
 #: The body: 80 mm deep (the face toward the robot where the mug's wall was),

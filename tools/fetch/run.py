@@ -143,6 +143,11 @@ def main() -> None:
     parser.add_argument("--story", action="store_true",
                         help="the alarm film's room: --cleanup's props, the slippers and a person (tools/fetch/story.py)")
     parser.add_argument("--scenery", action="store_true", help="dunes, palms and rocks around the beach (tools/fetch/scenery.py)")
+    parser.add_argument("--physics-hz", type=float, default=None,
+                        help="physics rate; the hop (jumper.step_up) is trained at 400, five_foot's world steps at 200")
+    parser.add_argument("--climb", action="store_true",
+                        help="the climb film's steps by the bed and the sleeper (tools/fetch/climb.py)")
+    parser.add_argument("--stair", action="store_true", help="one probe step ahead (tools/fetch/stair.py)")
     parser.add_argument("--room", action="store_true", help="beat two's pillars and tray, props that collide (tools/fetch/room.py)")
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--speed", type=float, default=None)
@@ -190,6 +195,8 @@ def main() -> None:
     import tasks
 
     env_cfg = tasks.load_env_cfg(spec.id, asset=asset, play=True, task_args=args.task_args)
+    if args.physics_hz:
+        env_cfg.sim.mujoco.timestep = 1.0 / args.physics_hz
     try:
         step_the_world_at(env_cfg, opened.control_hz)
     except AppUnavailable as error:
@@ -217,6 +224,14 @@ def main() -> None:
         from scenery import apply_scenery
 
         apply_scenery(env_cfg)
+    if args.climb:
+        from climb import apply_climb
+
+        apply_climb(env_cfg)
+    if args.stair:
+        from stair import apply_stair
+
+        apply_stair(env_cfg)
     if args.room:
         from room import apply_room
 

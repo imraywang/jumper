@@ -194,7 +194,7 @@ def make_pilot(env, player, log=print):
         st["current"] = None
 
     def pilot(t):
-        s = dict(lx=0.0, ly=0.0, rx=0.0, ry=0.0, lt=0.0, rt=0.0, hat_x=0, hat_y=0, buttons=frozenset())
+        s = {"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0, "lt": 0.0, "rt": 0.0, "hat_x": 0, "hat_y": 0, "buttons": frozenset()}
         base_p, yaw = pose()
         fsm = player.fsm
         while not inbox.empty():
