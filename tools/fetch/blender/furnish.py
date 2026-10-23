@@ -22,7 +22,10 @@ from mathutils import Matrix, Vector
 
 # home.map's bed, from its collision boxes: x -1.80..-0.94, y -0.10..1.56, headboard at +y.
 BED_X, BED_Y = (-1.80, -0.94), (-0.10, 1.56)
-MATTRESS_TOP = 0.52
+#: home.map's own mattress top (bed_mattress, z 0.27..0.42): the climb film's crab walks on it, so
+#: the drawn bed has to be where the simulated one is. The alarm film's bed was 0.52, taller than
+#: the map's, with nothing standing on it.
+MATTRESS_TOP = 0.42
 SOFA_REGION = ((-0.20, 0.90), (1.42, 1.72))
 
 
@@ -104,7 +107,53 @@ def _import_model(folder: Path, collection, size=None, location=(0, 0, 0), yaw=0
     return root
 
 
-def furnish(collection, looks, assets: Path) -> float:
+def dress_steps(collection, looks, assets: Path, info: dict) -> int:
+    """The climb film's steps (tools/fetch/climb.py, geoms `climb_*`) as furniture, each on its box.
+
+    The simulated boxes are the truth -- the crab stands on their tops -- so each piece fills
+    its box exactly: the pouf and the ottoman upholstered and softly rounded, the stool and the
+    bench oak, the bench on legs with its top at the mattress.
+    """
+    tex = assets / "tex"
+    mats = {
+        "pouf": looks.textured("pouf", tex / "knitted_fleece", 2.0, tint=(0.86, 0.72, 0.56), colour_map=False),
+        "stool": looks.textured("stool", tex / "oak_veneer_01", 1.2),
+        "ottoman": looks.textured("ottoman", tex / "wool_boucle", 2.0, tint=(0.46, 0.55, 0.50), colour_map=False),
+        "bench": looks.textured("bench", tex / "oak_veneer_01", 1.5),
+    }
+    n = 0
+    for g in info["geoms"]:
+        if "climb_" not in g["name"]:
+            continue
+        kind = g["name"].split("climb_")[-1]
+        ob = bpy.data.objects.get(f"g{g['id']}")
+        if ob is not None:
+            bpy.data.objects.remove(ob, do_unlink=True)
+        (cx, cy, cz), (hx, hy, hz) = g["pos"], g["size"]
+        lo, hi = (cx - hx, cy - hy, cz - hz), (cx + hx, cy + hy, cz + hz)
+        mat = mats.get(kind, mats["stool"])
+        if kind in ("pouf", "ottoman"):
+            _box(f"step_{kind}", lo, hi, mat, bevel=0.04 if kind == "pouf" else 0.025, segments=6,
+                 collection=collection)
+            if kind == "ottoman":                       # a plinth of oak under the upholstery
+                _box("step_ottoman_base", (lo[0] + 0.01, lo[1] + 0.01, 0.0), (hi[0] - 0.01, hi[1] - 0.01, 0.04),
+                     mats["stool"], bevel=0.004, collection=collection)
+        elif kind == "bench":
+            top = 0.045
+            _box("step_bench_top", (lo[0], lo[1], hi[2] - top), hi, mat, bevel=0.006, collection=collection)
+            for lx in (lo[0] + 0.03, hi[0] - 0.08):
+                for ly in (lo[1] + 0.03, hi[1] - 0.08):
+                    _box("step_bench_leg", (lx, ly, 0.0), (lx + 0.05, ly + 0.05, hi[2] - top), mat, bevel=0.004,
+                         collection=collection)
+            _box("step_bench_rail", (lo[0] + 0.05, lo[1] + 0.03, 0.10), (hi[0] - 0.05, lo[1] + 0.07, 0.14), mat,
+                 bevel=0.004, collection=collection)
+        else:                                            # the stool: a box stool with a finger slot
+            _box(f"step_{kind}", lo, hi, mat, bevel=0.008, collection=collection)
+        n += 1
+    return n
+
+
+def furnish(collection, looks, assets: Path, info: dict | None = None) -> float:
     """Replace the map's bed, dress the sofa, add decor. Returns the mattress top height."""
     tex = assets / "tex"
     boucle = looks.textured("sofa_boucle", tex / "wool_boucle", 2.5, tint=(0.60, 0.66, 0.56), colour_map=False)
@@ -128,16 +177,20 @@ def furnish(collection, looks, assets: Path) -> float:
     head = looks.textured("headboard", tex / "wool_boucle", 2.0, tint=(0.80, 0.75, 0.68), colour_map=False)
     fleece = looks.textured("duvet", tex / "knitted_fleece", 2.5, tint=(0.74, 0.80, 0.86), colour_map=False)
     (x0, x1), (y0, y1) = BED_X, BED_Y
-    _box("bed_frame", (x0 - 0.02, y0 - 0.02, 0.08), (x1 + 0.02, y1 - 0.06, 0.30), oak, bevel=0.012, collection=collection)
+    frame_top = MATTRESS_TOP - 0.20
+    _box("bed_frame", (x0 - 0.02, y0 - 0.02, 0.08), (x1 + 0.02, y1 - 0.06, frame_top), oak, bevel=0.012,
+         collection=collection)
     for lx in (x0 + 0.03, x1 - 0.07):
         for ly in (y0 + 0.02, y1 - 0.12):
             _box("bed_leg", (lx, ly, 0.0), (lx + 0.04, ly + 0.04, 0.08), oak, bevel=0.005, collection=collection)
-    mattress = _box("mattress", (x0 + 0.01, y0 + 0.01, 0.30), (x1 - 0.01, y1 - 0.08, MATTRESS_TOP), white,
-                    bevel=0.045, segments=5, collection=collection)
+    _box("mattress", (x0 + 0.01, y0 + 0.01, frame_top), (x1 - 0.01, y1 - 0.08, MATTRESS_TOP), white,
+         bevel=0.045, segments=5, collection=collection)
     _box("headboard", (x0 - 0.03, y1 - 0.07, 0.22), (x1 + 0.03, y1 + 0.03, 1.02), head, bevel=0.035, segments=5,
          collection=collection)
     _pillow("pillow", ((x0 + x1) / 2, 1.30, MATTRESS_TOP + 0.06), (0.62, 0.40, 0.14), white, collection)
     _duvet(fleece, collection)
+    if info is not None:
+        dress_steps(collection, looks, assets, info)
 
     m = assets / "models"
     _import_model(m / "painted_wooden_nightstand", collection, location=(-0.62, 1.55, 0.0), yaw=math.pi, height=0.55)

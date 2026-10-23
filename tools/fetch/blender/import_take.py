@@ -50,6 +50,10 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--hdri", default="cayley_interior")
+    ap.add_argument("--lie-x", type=float, default=None,
+                    help="x of the sleeper's hips (person.py's LIE_AT is -1.37); the climb film uses -1.50")
+    ap.add_argument("--nod-at", type=float, default=None,
+                    help="seconds into the take at which a sleeper who never gets up starts to stir")
     ap.add_argument("--furnish", action="store_true",
                     help="replace the map's bed, dress the sofa and add decor (furnish.py)")
     ap.add_argument("--mixamo", type=Path, default=None,
@@ -153,13 +157,13 @@ class Looks:
 
     def fabric(self, rgba):
         """Upholstery in the mesh's own colour, with the woven pattern's normal map."""
-        key = "fabric_%.2f_%.2f_%.2f" % tuple(rgba[:3])
+        key = "fabric_{:.2f}_{:.2f}_{:.2f}".format(*tuple(rgba[:3]))
         if key not in self.cache:
             self.cache[key] = _textured(key, self._tex / "fabric_pattern_07", scale=4.0, tint=_lin(rgba))
         return self.cache[key]
 
     def plain(self, rgba, rough=0.5):
-        key = "plain_%.2f_%.2f_%.2f_%.2f" % (*rgba[:3], rough)
+        key = "plain_{:.2f}_{:.2f}_{:.2f}_{:.2f}".format(*rgba[:3], rough)
         if key not in self.cache:
             self.cache[key] = _principled(key, _lin(rgba), rough=rough)
         return self.cache[key]
@@ -180,7 +184,7 @@ def choose(looks: Looks, g: dict, centre: Vector, extent: Vector, mats: list[dic
     if g["type"] == "plane":                  # the terrain's ground, under the whole room
         return looks.floor
     if body.startswith("robot"):
-        r, gr, b = rgba[:3]
+        r, gr, _b = rgba[:3]
         if r > 0.5 and gr < 0.3:
             return looks.robot_red
         if max(rgba[:3]) < 0.25:
@@ -253,7 +257,9 @@ def _primitive(g: dict):
     elif t == "plane":
         bpy.ops.mesh.primitive_plane_add(size=2.0)
         ob = next(iter(set(bpy.data.objects) - before))
-        ob.data.transform(Matrix.Diagonal((min(s[0], 6.0), min(s[1], 6.0), 1.0, 1.0)))
+        # MuJoCo's size 0 is an infinite plane (a --stair probe's floor): draw it 20 m across.
+        hx, hy = (s[0] or 10.0), (s[1] or 10.0)
+        ob.data.transform(Matrix.Diagonal((min(hx, 6.0) if s[0] else hx, min(hy, 6.0) if s[1] else hy, 1.0, 1.0)))
     else:
         return None
     for p in ob.data.polygons:
@@ -468,11 +474,12 @@ def main():
     if args.furnish:
         from furnish import furnish
 
-        mattress_top = furnish(coll, looks, args.assets)
+        mattress_top = furnish(coll, looks, args.assets, info)
     if args.mixamo:
         from person import add_person
 
-        add_person(frames, info["bodies"], args.mixamo.resolve(), coll, mattress_top=mattress_top)
+        add_person(frames, info["bodies"], args.mixamo.resolve(), coll, mattress_top=mattress_top,
+                   nod_at=args.nod_at, lie_x=args.lie_x)
     camera(frames, n)
     lights(args.assets, args.hdri)
     setup_render(args, n)

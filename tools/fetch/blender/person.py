@@ -24,7 +24,7 @@ from pathlib import Path
 
 import bpy
 import numpy as np
-from mathutils import Quaternion, Vector
+from mathutils import Vector
 
 FPS = 30
 SCALE = 0.005                    # the imports come in at twice life size; this makes Remy 1.65 m
@@ -78,10 +78,13 @@ def _runs(flags):
     return out
 
 
-def add_person(take_frames, bodies: list[str], clips: Path, collection, mattress_top=None) -> list[str]:
+def add_person(take_frames, bodies: list[str], clips: Path, collection, mattress_top=None,
+               nod_at: float | None = None, lie_x: float | None = None) -> list[str]:
     """Add Remy; returns the body names whose drawn geoms it replaces."""
     xpos, xquat = take_frames["xpos"], take_frames["xquat"]
     lie_at = LIE_AT.copy()
+    if lie_x is not None:                            # nearer the wall, clear of a crab on the mattress
+        lie_at.x = lie_x
     if mattress_top is not None:                     # a bed furnish.py built: hips this far above its top
         lie_at.z = mattress_top + (LIE_AT.z - 0.46)
     body = next(i for i, name in enumerate(bodies) if name.split("/")[0] == "person")
@@ -114,10 +117,13 @@ def add_person(take_frames, bodies: list[str], clips: Path, collection, mattress
     # ── the cast: (clip, first frame, last frame exclusive, playback rate, frame range) ──
     lying = [i for i, s in enumerate(state) if s == "lying"]
     f_up = (max(lying) + 1) if lying else 0
+    nod_from = int(nod_at * FPS) if nod_at is not None else None
     standing = [i for i, s in enumerate(state) if s == "standing" and i >= f_up]
     f_stand = standing[0] if standing else n
     strips = []
-    f_nod = max(0, f_up - int(NOD_S * FPS))
+    # The person stirs NOD_S before getting up -- or, in a take where it never gets up (the
+    # climb film), from `nod_at` seconds: the tap.
+    f_nod = min(nod_from, f_up) if nod_from is not None else max(0, f_up - int(NOD_S * FPS))
     strips.append(("laying_sleeping", 0, f_nod, 1.0, None))
     strips.append(("laying_nodding", f_nod, f_up, 1.0, None))
     f_sit_end = f_up + int(SIT_S * FPS)
