@@ -36,6 +36,36 @@ are imported on demand by `load_env_cfg` / `load_agent_cfg`, which is when mjlab
 torch and mujoco get pulled in. `tests/test_registry.py` watches this.
 """
 
+# ── Import each task here to trigger registration ─────────────────────────
+# Adding a task means adding one line here; nothing under scripts/ changes.
+from .jumper import (
+    dance,  # noqa: F401
+    dance_brazilian,  # noqa: F401
+    dance_dream_wings,  # noqa: F401
+    dance_maze,  # noqa: F401
+    dance_waist,  # noqa: F401
+    dash,  # noqa: F401
+    five_foot,  # noqa: F401
+    flat,  # noqa: F401
+    gesture_bow,  # noqa: F401
+    gesture_hello,  # noqa: F401
+    gesture_paw,  # noqa: F401
+    gesture_pump,  # noqa: F401
+    gesture_salute,  # noqa: F401
+    gesture_sleep,  # noqa: F401
+    gesture_threat,  # noqa: F401
+    gesture_wave,  # noqa: F401
+    gesture_zoidberg,  # noqa: F401
+    jump,  # noqa: F401
+    posture,  # noqa: F401
+    ref_free_jump,  # noqa: F401
+    ripple,  # noqa: F401
+    sprint,  # noqa: F401
+    step_up,  # noqa: F401
+    swing,  # noqa: F401
+    tetrapod,  # noqa: F401
+    tripod,  # noqa: F401
+)
 from .registry import (
     AssetSpec,
     TaskSpec,
@@ -51,45 +81,17 @@ from .registry import (
     register,
 )
 
-# ── Import each task here to trigger registration ─────────────────────────
-# Adding a task means adding one line here; nothing under scripts/ changes.
-from .jumper import dance  # noqa: F401,E402
-from .jumper import dance_brazilian  # noqa: F401,E402
-from .jumper import dance_dream_wings  # noqa: F401,E402
-from .jumper import dance_maze  # noqa: F401,E402
-from .jumper import dance_waist  # noqa: F401,E402
-from .jumper import five_foot  # noqa: F401,E402
-from .jumper import flat  # noqa: F401,E402
-from .jumper import gesture_bow  # noqa: F401,E402
-from .jumper import gesture_zoidberg  # noqa: F401,E402
-from .jumper import gesture_sleep  # noqa: F401,E402
-from .jumper import gesture_hello  # noqa: F401,E402
-from .jumper import gesture_paw  # noqa: F401,E402
-from .jumper import gesture_salute  # noqa: F401,E402
-from .jumper import gesture_threat  # noqa: F401,E402
-from .jumper import gesture_wave  # noqa: F401,E402
-from .jumper import gesture_pump  # noqa: F401,E402
-from .jumper import jump  # noqa: F401,E402
-from .jumper import posture  # noqa: F401,E402
-from .jumper import sprint  # noqa: F401,E402
-from .jumper import dash  # noqa: F401,E402
-from .jumper import ref_free_jump  # noqa: F401,E402
-from .jumper import ripple  # noqa: F401,E402
-from .jumper import swing  # noqa: F401,E402
-from .jumper import tetrapod  # noqa: F401,E402
-from .jumper import tripod  # noqa: F401,E402
-
 __all__ = [
     "AssetSpec",
     "TaskSpec",
-    "register",
+    "all_specs",
     "get",
     "list_ids",
-    "all_specs",
-    "load_env_cfg",
     "load_agent_cfg",
     "load_cli_args",
+    "load_env_cfg",
+    "load_export_media",
     "load_play_status",
     "load_runner_cls",
-    "load_export_media",
+    "register",
 ]
